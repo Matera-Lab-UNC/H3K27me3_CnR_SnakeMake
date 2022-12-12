@@ -1,0 +1,94 @@
+---
+title: "Plots: DESeq2 sup smallFragmentBam Summits+-150bp Analysis"
+author: "Benjamin McMichael"
+date: "12/02/2022"
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+setdir='/nas/longleaf/home/bdmcmi/work/Benjamin/H3K27me3_CutnRun/Pel_Sup_IgGcon_Analysis_20221202/Merged_DESeq2_Short_Fragment_Analysis'
+setwd(setdir)
+library(ggplot2)
+library(dplyr)
+
+```
+
+```{r read in H3.2 DESeq2 Sup Fraction Data}
+
+H3.2_sup_smallFrag_summit_data <- read.csv("DESeq2_Results/20221205_K36R_HWT_sup_IgGcon_DESeq2_smallFragBam_SummitsPlusMinus150bp_results.csv", header=T, stringsAsFactors = F) %>%
+                      dplyr::mutate(Genotype = 'H3.2', Fraction = 'Sup')
+
+head(H3.2_sup_smallFrag_summit_data)
+
+```
+
+```{r read in H3.3 DESeq2 Sup Fraction Data}
+
+H3.3_sup_smallFrag_summit_data <- read.csv("DESeq2_Results/20221205_Adelta_H33BK36R_sup_IgGcon_DESeq2_smallFragBam_SummitsPlusMinus150bp_results.csv", header=T, stringsAsFactors = F) %>%
+                      dplyr::mutate(Genotype = 'H3.3', Fraction = 'Pellet')
+
+head(H3.3_sup_smallFrag_summit_data)
+
+```
+
+```{r Merge Sup Data}
+
+merged_Data <- rbind(H3.2_sup_smallFrag_summit_data, H3.3_sup_smallFrag_summit_data)
+
+head(merged_Data)
+
+```
+
+```{r Bar Plot of Significant Peak Counts Between Genotypes - Sup}
+
+merged_Data %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Enrichment = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  ggplot(aes(x = Genotype, fill = factor(Enrichment, levels = c('Up', 'Down')))) +
+  geom_bar(position = 'stack', width = 0.5) +
+  labs(title = 'H3.2 vs H3.3 Significant Summits: Small Fragment Sup Fraction', y = 'Summits', x  = 'Genotype', fill='Enrichment') +
+  scale_y_continuous(limits = c(0, 70),
+                     breaks = seq(0,70,10)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r Bar Chart of Significant Peaks on Each Chromosome Between Genotypes - Sup} 
+  
+merged_Data %>%
+  data.frame() %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Regulation = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  ggplot(aes(x = Genotype, fill = factor(Regulation, levels = c('Up', 'Down')))) +
+  geom_bar(position = 'stack') +
+  facet_grid(~Chr) +
+  labs(title = 'H3.2 vs H3.3 Significant Summits per Chromosome: Small Fragment Sup Fraction', y = 'Summits',x  = 'Genotype', 
+       fill = 'Regulation') +
+  scale_y_continuous(limits = c(0, 40),
+                     breaks = seq(0,40,10)) +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+```
+
+```{r Plot H3K36R vs HWT Results: MA Plot- Sup}
+
+merged_Data %>%
+  data.frame() %>%
+  dplyr::mutate(., baseMean.log = log10(baseMean)) %>%
+  makeDensityColorVector(., xColName = 'baseMean.log', yColName = 'log2FoldChange', n = 200) %>%
+  ggplot(aes(x = baseMean.log, y = log2FoldChange)) + 
+  geom_point(aes(color = densVals), size=0.2) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange > 1)},
+             color = "#009acd", 
+             size=1, alpha=0.7) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange < -1)},
+             color = "#ff0000", 
+             size=1, alpha=0.7) +
+  labs(title = 'H3.2 vs H3.3 Summits: Small Fragment Sup Fraction') +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_color_gradientn(colours = colorRampPalette(c('grey85', 'black'))(100)) +
+  facet_wrap(~Genotype)
+
+```

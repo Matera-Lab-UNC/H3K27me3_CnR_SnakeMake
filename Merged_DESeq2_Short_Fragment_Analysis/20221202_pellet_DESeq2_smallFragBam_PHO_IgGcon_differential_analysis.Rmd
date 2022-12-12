@@ -1,0 +1,251 @@
+---
+title: "poolGenotypes DESeq2 pellet smallFragmentBam PHO Analysis"
+author: "Benjamin McMichael"
+date: "12/02/2022"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+setdir='/nas/longleaf/home/bdmcmi/work/Benjamin/H3K27me3_CutnRun/Pel_Sup_IgGcon_Analysis_20221202/Merged_DESeq2_Short_Fragment_Analysis'
+setwd(setdir)
+library(DESeq2)
+library(ggplot2)
+library(EnhancedVolcano)
+library(dplyr)
+library(Rsamtools)
+library(Rsubread)
+library(GenomicRanges)
+library(Vennerable)
+library(bedtoolsr)
+options(bedtools.path = "/nas/longleaf/apps/bedtools/2.29.0/bin")
+
+currentDate <- Sys.Date() %>% format("%Y%m%d")
+
+```
+
+```{r read sample-id.csv}
+
+sample_id <- read.csv("pellet_samples_IgGcon_DESeq2_smallFrag_sampleSheet.csv", header=T, stringsAsFactors = F)
+
+sample_id[1:6]
+
+```
+
+```{r Subset samples for featureCounts}
+# Subset sample.id dataframe to only include individual replicates you want to put into DESeq
+
+annotation <- read.table("221129_CONCAT_Short_frag_summit_intevals_overlapping_Pho_Fig5CandS10_MERGED_OVERLAPPING.bed") %>%
+  dplyr::mutate(Strand="*", GeneID=row.names(.)) %>%
+  dplyr::select(GeneID, Chr=V1, Start=V2, End=V3, Strand)
+
+```
+
+```{r featureCounts}
+
+count <- featureCounts(sample_id$Bam_Path, annot.ext = annotation, isPairedEnd = T, allowMultiOverlap = T)
+colnames(count$counts) <- sample_id$RName
+count.k27me3 <- count
+
+```
+
+```{r DESeq2}
+
+deseq <- DESeqDataSetFromMatrix(countData = count.k27me3$counts,
+                              colData = sample_id,
+                              design= ~Genotype) %>%
+          DESeq(.)
+
+```
+
+```{r H3K36R vs HWT DESeq2 Results}
+
+H3K36R.result <- results(deseq, contrast = c("Genotype", "H3K36R", "HWT"), alpha = 0.05)
+
+summary(H3K36R.result)
+
+```
+
+```{r H33BK36R vs Adelta DESEq2 Results}
+
+H33BK36R.result <- results(deseq, contrast = c("Genotype", "H33BK36R", "Adelta"), alpha = 0.05)
+
+summary(H33BK36R.result)
+
+```
+
+```{r Generate VST transformed PCA plot}
+
+vsd_PCA <- DESeq2::varianceStabilizingTransformation(deseq)
+
+vsd_PCA <- DESeq2::plotPCA(vsd_PCA, intgroup=c('Genotype'))
+vsd_PCA
+
+```
+
+```{r Generate rlog transformed PCA plot}
+
+rlog_PCA <- DESeq2::rlog(deseq)
+
+rlog_PCA <- DESeq2::plotPCA(rlog_PCA, intgroup=c('Genotype'))
+rlog_PCA
+
+```
+
+```{r Annotate Peaks in H3K36R vs HWT DESeq2 Output}
+
+H3K36R.result.coordinates <- H3K36R.result %>%
+  data.frame() %>%
+  dplyr::mutate(GeneID = rownames(H3K36R.result)) %>%
+  dplyr::select(baseMean, log2FoldChange, GeneID, pvalue, padj) %>%
+  dplyr::left_join(., annotation, by = "GeneID")
+
+```
+
+```{r Export H3K36R vs HWT DESeq2 Results}
+
+H3K36R.resOrdered <- H3K36R.result.coordinates[order(H3K36R.result.coordinates$padj),]
+write.csv(as.data.frame(H3K36R.resOrdered), file = paste0("DESeq2_Results/",currentDate,"_K36R_HWT_pellet_IgGcon_DESeq2_smallFragBam_PHO_results.csv")
+                )
+          
+head(H3K36R.resOrdered)
+
+```
+
+```{r Annotate Peaks in H33BK36R vs Adelta DESeq2 Output}
+
+H33BK36R.result.coordinates <- H33BK36R.result %>%
+  data.frame() %>%
+  dplyr::mutate(GeneID = rownames(H33BK36R.result)) %>%
+  dplyr::select(baseMean, log2FoldChange, GeneID, pvalue, padj) %>%
+  dplyr::left_join(., annotation, by = "GeneID")
+
+```
+
+```{r Export H33BK36R vs Adelta DESeq2 Results}
+
+H33BK36R.resOrdered <- H33BK36R.result.coordinates[order(H33BK36R.result.coordinates$padj),]
+write.csv(as.data.frame(H33BK36R.resOrdered), file = paste0("DESeq2_Results/",currentDate,"_Adelta_H33BK36R_pellet_IgGcon_DESeq2_smallFragBam_PHO_results.csv")
+                )
+          
+head(H33BK36R.resOrdered)
+
+```
+
+```{r Enrichment Files}
+## READ THIS BEFORE RUNNING
+## Added on 08-16-2022 simply to count number of up and down enriched peaks that correspond to MA-plots and bar charts!!!
+
+H3K36R.resOrdered %>%
+  data.frame() %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Enrichment = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  write.csv(., file = paste0("DESeq2_Results/",currentDate,"_K36R_HWT_pellet_IgGcon_DESeq2_smallFragBam_PHO_enrichment.csv")
+                )
+
+H33BK36R.resOrdered %>%
+  data.frame() %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Enrichment = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  write.csv(., file = paste0("DESeq2_Results/",currentDate,"_Adelta_H33BK36R_pellet_IgGcon_DESeq2_smallFragBam_PHO_enrichment.csv")
+                )
+
+
+```
+
+```{r Plot H3K36R vs HWT Results- MA Plot}
+#From Chris
+
+H3K36R.result %>%
+  data.frame() %>%
+  dplyr::mutate(., baseMean.log = log10(baseMean)) %>%
+  makeDensityColorVector(., xColName = 'baseMean.log', yColName = 'log2FoldChange', n = 200) %>%
+  ggplot(aes(x = baseMean.log, y = log2FoldChange)) + 
+  geom_point(aes(color = densVals), size=0.2) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange > 1)},
+             color = "#009acd", 
+             size=1, alpha=0.7) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange < -1)},
+             color = "#ff0000", 
+             size=1, alpha=0.7) +
+  scale_color_gradientn(colours = colorRampPalette(c('grey85', 'black'))(100))  + theme_minimal()
+
+```
+
+```{r Plot H33BK36R vs Adelta Results- MA Plot}
+#From Chris
+
+H33BK36R.result %>%
+  data.frame() %>%
+  dplyr::mutate(., baseMean.log = log10(baseMean)) %>%
+  makeDensityColorVector(., xColName = 'baseMean.log', yColName = 'log2FoldChange', n = 200) %>%
+  ggplot(aes(x = baseMean.log, y = log2FoldChange)) + 
+  geom_point(aes(color = densVals), size=0.2) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange > 1)},
+             color = "#009acd", 
+             size=1, alpha=0.7) +
+  geom_point(data = function(x){x %>% dplyr::filter(padj < 0.05) %>% dplyr::filter(log2FoldChange < -1)},
+             color = "#ff0000", 
+             size=1, alpha=0.7) +
+  scale_color_gradientn(colours = colorRampPalette(c('grey85', 'black'))(100))  + theme_minimal()
+
+```
+
+```{r Plot H3K36R vs HWT Results - Volcano Plot}
+# Added by Benjamin
+# Date 3-31-2022
+
+H3K36R.resOrdered %>%
+  data.frame() %>%
+  EnhancedVolcano(
+    lab = H3K36R.resOrdered$Chr,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    title = 'H3K36R versus HWT - Pellet')
+
+```
+
+```{r Plot Results H33BK36R vs Adelta - Volcano Plot}
+# Added by Benjamin
+# Date 3-31-2022
+
+H33BK36R.resOrdered %>%
+  data.frame() %>%
+  EnhancedVolcano(
+    lab = H33BK36R.resOrdered$Chr,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    title = 'H33BK36R versus Adelta - Pellet')
+
+```
+
+```{r Bar Chart of H3K36R Significant Peaks on Each Chromosome} 
+  
+H3K36R.resOrdered %>%
+  data.frame() %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Enrichment = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  ggplot(aes(x = Chr, fill = factor(Enrichment, levels = c('Up', 'Down')))) +
+  geom_bar(position = 'stack') +
+  labs(title = 'Significant Peak Counts', y = 'Peak Count', x  = 'Chromosome', fill='Enrichment') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r Bar Chart of H33BK36R Significant Peaks on Each Chromosome} 
+  
+H33BK36R.resOrdered %>%
+  data.frame() %>%
+  dplyr::filter(padj < 0.05) %>% 
+  dplyr::filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  dplyr::mutate(Enrichment = ifelse(log2FoldChange > 1, 'Up', 'Down')) %>%
+  ggplot(aes(x = Chr, fill = factor(Enrichment, levels = c('Up', 'Down')))) +
+  geom_bar(position = 'stack') +
+  labs(title = 'Significant Peak Counts', y = 'Peak Count', x  = 'Chromosome', fill='Enrichment') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
