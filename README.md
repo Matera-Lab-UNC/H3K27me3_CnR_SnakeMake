@@ -2,17 +2,15 @@
 ## Author: Benjamin McMichael
 ## Date: 12-02-2022
 
-## File Origins
-CnR files in this directory were copied from:
-```
-/nas/longleaf/home/bdmcmi/work/Benjamin/H3K27me3_CutnRun/norm_IgG_20221130
-```
-These were normalized to IgG and Snakemake was run using r/4.2.1.
-This is different than the previously analyzed files which had no normalization and used r/3.3.1.
+[![DOI](https://zenodo.org/badge/577371472.svg)](https://zenodo.org/badge/latestdoi/577371472)
 
-## R scripts
-R scripts for DESeq2 used in this analysis were copied from:
+## Citations
+This Snakemake code was cloned from:
 ```
-/nas/longleaf/home/bdmcmi/work/Benjamin/H3K27me3_CutnRun/Pel_Sup_noCon_Analysis
+https://github.com/snystrom/cutNrun-pipeline.git
 ```
-These scripts were repurposed using the IgG control CnR outputs. 
+The Snakemake_README.md is the original README.md with instructions for  properly running this pipeline.
+The code was then edited as necessary for the current analysis.
+
+## File Normalization
+CnR files were normalized to IgG and Snakemake pipeline was run using r/4.2.1.
